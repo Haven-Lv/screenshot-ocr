@@ -15,20 +15,27 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 用「一个 TextView + Span」渲染分词结果，而不是几百个 TextView 子控件：
- *  - 滚动交给外层 ScrollView 原生处理（有惯性、跟手、不拖影）
- *  - 轻点：按字符偏移找到词元，复制该词
- *  - 横向拖动：区间高亮，松手复制整段
- *  - 竖向拖动：父 ScrollView 接管（本控件收 CANCEL），不复制
+ * 分词视图：一个 TextView + Span 渲染（原生滚动），但每个词元之间插入「窄空格」并加底色，
+ * 保证视觉上仍是"一词一块"，不会糊成一段。
+ *
+ *  tokens[i] = {rawStart, rawEnd, dispStart, dispEnd}
+ *  - raw*  用于复制原文（不含人工插入的窄空格）
+ *  - disp* 用于命中测试与高亮
  */
 public class TokenTextView extends TextView {
+
+    /** 词元之间的分隔符：U+2009 THIN SPACE，占位很小但足够把相邻色块分开。 */
+    private static final char SEP = '\u2009';
+    private static final int TOKEN_BG = Color.parseColor("#1B2230");
 
     interface OnPick {
         void onPick(String picked);
     }
 
     private final List<int[]> tokens = new ArrayList<>();
+    private final List<BackgroundColorSpan> tokenBgs = new ArrayList<>();
     private String raw = "";
+    private String display = "";
     private OnPick listener;
     private int slop;
     private int anchor = -1;
@@ -49,7 +56,7 @@ public class TokenTextView extends TextView {
         slop = ViewConfiguration.get(c).getScaledTouchSlop();
         setTextSize(14.5f);
         setTextColor(Ui.TEXT);
-        setLineSpacing(Ui.dp(c, 6), 1f);
+        setLineSpacing(Ui.dp(c, 7), 1f);
         setTextIsSelectable(false);
     }
 
@@ -60,13 +67,36 @@ public class TokenTextView extends TextView {
     void setContent(String text) {
         raw = text == null ? "" : text;
         tokens.clear();
+        tokenBgs.clear();
+        StringBuilder disp = new StringBuilder();
         List<WordSeg.Token> list = WordSeg.split(raw);
+        boolean pendingBreak = false;
         for (WordSeg.Token t : list) {
-            if (!t.lineBreak && t.end > t.start) {
-                tokens.add(new int[]{t.start, t.end});
+            if (t.lineBreak) {
+                pendingBreak = true;
+                continue;
             }
+            if (t.end <= t.start) {
+                continue;
+            }
+            if (pendingBreak && disp.length() > 0) {
+                disp.append('\n');
+            }
+            pendingBreak = false;
+            int ds = disp.length();
+            disp.append(raw, t.start, t.end);
+            int de = disp.length();
+            tokens.add(new int[]{t.start, t.end, ds, de});
+            disp.append(SEP);
         }
-        SpannableString sp = new SpannableString(raw);
+        display = disp.toString();
+
+        SpannableString sp = new SpannableString(display);
+        for (int[] tk : tokens) {
+            BackgroundColorSpan bg = new BackgroundColorSpan(TOKEN_BG);
+            sp.setSpan(bg, tk[2], tk[3], Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            tokenBgs.add(bg);
+        }
         setText(sp);
         clearSelection();
     }
@@ -109,17 +139,17 @@ public class TokenTextView extends TextView {
         }
         int ia = Math.max(0, Math.min(a, b));
         int ib = Math.min(tokens.size() - 1, Math.max(a, b));
-        int start = tokens.get(ia)[0];
-        int end = tokens.get(ib)[1];
+        int ds = tokens.get(ia)[2];
+        int de = tokens.get(ib)[3];
         Spannable sp = spannable();
-        if (sp == null || start >= end) {
+        if (sp == null || ds >= de) {
             return;
         }
         removeSpans();
         bgSpan = new BackgroundColorSpan(Ui.ACCENT);
         fgSpan = new ForegroundColorSpan(Color.parseColor("#041513"));
-        sp.setSpan(bgSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        sp.setSpan(fgSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        sp.setSpan(bgSpan, ds, de, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        sp.setSpan(fgSpan, ds, de, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         invalidate();
     }
 
@@ -132,17 +162,17 @@ public class TokenTextView extends TextView {
         while (lo <= hi) {
             int mid = (lo + hi) >>> 1;
             int[] t = tokens.get(mid);
-            if (offset < t[0]) {
+            if (offset < t[2]) {
                 hi = mid - 1;
-            } else if (offset >= t[1]) {
+            } else if (offset >= t[3]) {
                 lo = mid + 1;
             } else {
                 return mid;
             }
         }
-        // 落在两个词元之间的空隙（空格/标点被切掉的情况）：取前一个词元
+        // 落在窄空格/换行上：取前一个词元
         for (int i = tokens.size() - 1; i >= 0; i--) {
-            if (tokens.get(i)[1] <= offset) {
+            if (tokens.get(i)[3] <= offset) {
                 return i;
             }
         }
