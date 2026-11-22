@@ -21,8 +21,8 @@ KEYSTORE = os.path.join(PROJECT, "tools", "keystore", "ocrshare.jks")
 KS_PASS = "ocrshare"
 KS_ALIAS = "ocrshare"
 PKG = "cn.yg.ocrshare"
-VERSION_NAME = "1.1.6"
-VERSION_CODE = "8"
+VERSION_NAME = "1.1.7"
+VERSION_CODE = "9"
 MIN_SDK = "26"
 TARGET_SDK = "36"
 

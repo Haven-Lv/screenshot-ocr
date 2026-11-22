@@ -30,9 +30,11 @@ final class FlowSelectView extends ViewGroup {
 
     static final class Token {
         final WordSeg.Token src;
+        final boolean breakBefore;
 
-        Token(WordSeg.Token src) {
+        Token(WordSeg.Token src, boolean breakBefore) {
             this.src = src;
+            this.breakBefore = breakBefore;
         }
     }
 
@@ -57,10 +59,16 @@ final class FlowSelectView extends ViewGroup {
         anchor = -1;
         selMin = -1;
         selMax = -1;
+        boolean pendingBreak = false;
         for (WordSeg.Token t : list) {
-            tokens.add(new Token(t));
+            if (t.lineBreak) {
+                pendingBreak = true;
+                continue;
+            }
+            tokens.add(new Token(t, pendingBreak));
+            pendingBreak = false;
             TextView tv = new TextView(getContext());
-            tv.setText(t.lineBreak ? "↵" : t.text);
+            tv.setText(t.text);
             tv.setTextSize(13.5f);
             tv.setPadding(Ui.dp(getContext(), 9), Ui.dp(getContext(), 5),
                     Ui.dp(getContext(), 9), Ui.dp(getContext(), 5));
@@ -115,8 +123,11 @@ final class FlowSelectView extends ViewGroup {
         int b = Math.min(tokens.size() - 1, Math.max(first, last));
         StringBuilder sb = new StringBuilder();
         for (int i = a; i <= b; i++) {
-            WordSeg.Token t = tokens.get(i).src;
-            sb.append(t.lineBreak ? "\n" : t.text);
+            Token tk = tokens.get(i);
+            if (tk.breakBefore && sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(tk.src.text);
         }
         return sb.toString();
     }
@@ -157,7 +168,8 @@ final class FlowSelectView extends ViewGroup {
             tv.measure(MeasureSpec.makeMeasureSpec(avail, MeasureSpec.AT_MOST),
                     MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
             int w = tv.getMeasuredWidth();
-            if (lineW > 0 && lineW + gap + w > avail) {
+            boolean forceBreak = i < tokens.size() && tokens.get(i).breakBefore;
+            if (lineW > 0 && (forceBreak || lineW + gap + w > avail)) {
                 totalH += lineH + gap;
                 lineW = 0;
                 lineH = 0;
@@ -186,7 +198,8 @@ final class FlowSelectView extends ViewGroup {
             TextView tv = (TextView) getChildAt(i);
             int w = tv.getMeasuredWidth();
             int h = tv.getMeasuredHeight();
-            if (x > getPaddingLeft() && x + w > getPaddingLeft() + avail) {
+            boolean forceBreak = i < tokens.size() && tokens.get(i).breakBefore;
+            if (x > getPaddingLeft() && (forceBreak || x + w > getPaddingLeft() + avail)) {
                 x = getPaddingLeft();
                 y += lineH + gap;
                 lineH = 0;

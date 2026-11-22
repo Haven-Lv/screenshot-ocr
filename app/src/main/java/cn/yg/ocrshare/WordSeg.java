@@ -53,7 +53,8 @@ final class WordSeg {
             String piece = text.substring(start, end);
             boolean line = piece.equals("\n") || piece.equals("\r\n") || piece.equals("\r");
             if (line) {
-                out.add(new Token("↵", start, end, true));
+                // 换行只作为分段标记，界面上不再画成 ↵ 词块
+                out.add(new Token("", start, end, true));
             } else if (!piece.trim().isEmpty()) {
                 out.add(new Token(piece, start, end, false));
             }
