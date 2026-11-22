@@ -18,10 +18,16 @@ import android.widget.Toast;
 import java.io.File;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 结果页：一个 TextView + Span 的分词视图（原生滚动，跟手不拖影）。
- * 支持两种进入方式：分享/选图（跑 OCR），或从首页历史点进来（直接显示文本）。
+ * 结果页：一个 TextView + Span 的分词视图（原生滚动）。
+ * 两种进入方式：分享/选图（跑 OCR），或首页历史（直接显示文本）。
+ *
+ * 代码审查后的关键修正：
+ * - onResume 重读 Cfg（从设置页回来能立刻用新 provider）
+ * - 请求序号 gen：旋转/连分享时旧任务的结果不会覆盖新图
+ * - 压缩改为循环降质，直到 ≤999KB；bitmap 用完 recycle
  */
 public class ResultActivity extends Activity {
     public static final String EXTRA_TEXT = "text";
@@ -32,6 +38,7 @@ public class ResultActivity extends Activity {
     private TextView selHint;
     private TokenTextView tokenView;
     private Cfg cfg;
+    private final AtomicInteger gen = new AtomicInteger();
     private final ExecutorService pool = Executors.newSingleThreadExecutor();
 
     @Override
@@ -43,6 +50,7 @@ public class ResultActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Ui.BG);
         root.setPadding(Ui.dp(this, 16), Ui.dp(this, 22), Ui.dp(this, 16), Ui.dp(this, 10));
+        Ui.applyInsets(root);
 
         LinearLayout hero = Ui.card(this, Ui.CARD, Ui.LINE);
         hero.setLayoutParams(new LinearLayout.LayoutParams(
@@ -153,11 +161,19 @@ public class ResultActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // 从设置页回来时要拿到新的 provider / 密钥
+        cfg = Cfg.load(this);
+    }
+
+    @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
         Uri next = pickImage(intent);
         if (next != null) {
+            gen.incrementAndGet(); // 作废在途请求
             imageUri = next;
             runOcr();
         }
@@ -195,35 +211,56 @@ public class ResultActivity extends Activity {
         status.setText(source + " · " + text.length() + " 字");
     }
 
+    private byte[] compress(Bitmap bmp) {
+        int[] qualities = new int[]{cfg.quality, 60, 45, 35};
+        byte[] jpeg = Img.toJpeg(bmp, qualities[0]);
+        for (int i = 1; i < qualities.length && jpeg.length > 999_000; i++) {
+            jpeg = Img.toJpeg(bmp, qualities[i]);
+        }
+        return jpeg;
+    }
+
     private void runOcr() {
         final Uri uri = imageUri;
         if (uri == null) {
             return;
         }
+        final int my = gen.incrementAndGet();
         status.setTextColor(Ui.SUB);
         status.setText("识别中 · " + cfg.providerName() + " · 长边 " + cfg.maxEdge + "px");
         pool.execute(() -> {
+            Bitmap bmp = null;
             try {
-                Bitmap bmp = Img.load(this, uri, cfg.maxEdge);
-                byte[] jpeg = Img.toJpeg(bmp, cfg.quality);
-                if (jpeg.length > 950_000) {
-                    jpeg = Img.toJpeg(bmp, 60);
+                bmp = Img.load(this, uri, cfg.maxEdge);
+                byte[] jpeg = compress(bmp);
+                bmp.recycle();
+                bmp = null;
+                if (my != gen.get()) {
+                    return;
                 }
                 final String text = OcrClient.recognize(cfg, jpeg, cfg.lang);
-                final int kb = jpeg.length / 1024;
+                if (my != gen.get()) {
+                    return;
+                }
                 History.add(this, text);
-                getSharedPreferences("last", Context.MODE_PRIVATE).edit()
-                        .putString("text", text)
-                        .putLong("at", System.currentTimeMillis())
-                        .apply();
+                final int kb = jpeg.length / 1024;
                 runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed() || my != gen.get()) {
+                        return;
+                    }
                     showText(text, "完成");
                     status.setText("完成 · " + text.length() + " 字 · 上传 " + kb + " KB · "
                             + cfg.providerName());
                 });
             } catch (Throwable t) {
+                if (bmp != null) {
+                    bmp.recycle();
+                }
                 String msg = t.getMessage() == null ? t.toString() : t.getMessage();
                 runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed() || my != gen.get()) {
+                        return;
+                    }
                     status.setTextColor(Ui.ERR);
                     status.setText("失败 · " + msg);
                 });
@@ -237,6 +274,7 @@ public class ResultActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        gen.incrementAndGet();
         pool.shutdownNow();
         super.onDestroy();
     }

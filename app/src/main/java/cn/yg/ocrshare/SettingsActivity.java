@@ -55,16 +55,19 @@ public class SettingsActivity extends Activity {
         btnSpace = Ui.button(this, "OCR.space", false);
         btnSpace.setOnClickListener(v -> {
             cfg.provider = Cfg.PROVIDER_OCRSPACE;
+            cfg.save(this);
             renderProvider();
         });
         btnTc = Ui.button(this, "腾讯云·通用", false);
         btnTc.setOnClickListener(v -> {
             cfg.provider = Cfg.PROVIDER_TENCENT;
+            cfg.save(this);
             renderProvider();
         });
         btnAcc = Ui.button(this, "腾讯云·高精度", false);
         btnAcc.setOnClickListener(v -> {
             cfg.provider = Cfg.PROVIDER_TENCENT_ACC;
+            cfg.save(this);
             renderProvider();
         });
         pRow.addView(btnSpace);
@@ -112,6 +115,7 @@ public class SettingsActivity extends Activity {
         });
         box.addView(save);
 
+        Ui.applyInsets(root);
         setContentView(root);
         renderProvider();
     }

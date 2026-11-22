@@ -5,8 +5,9 @@ import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.widget.Toast;
 
-/** 分享入口：接住系统分享的图片，转给结果页后立刻退出。 */
+/** 分享入口：接住图片 → 转给结果页 → 立刻退出。 */
 public class ShareActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -26,12 +27,18 @@ public class ShareActivity extends Activity {
                 uri = src.getData();
             }
         }
-        Intent next = new Intent(this, ResultActivity.class);
-        if (uri != null) {
-            next.setData(uri);
-            next.putExtra(Intent.EXTRA_STREAM, uri);
-            next.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        if (uri == null) {
+            Toast.makeText(this, "没有拿到图片", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
         }
+        Intent next = new Intent(this, ResultActivity.class);
+        next.setData(uri);
+        next.putExtra(Intent.EXTRA_STREAM, uri);
+        // CLEAR_TOP + SINGLE_TOP：连续分享只保留一个结果页，并触发 onNewIntent 换图
+        next.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                | Intent.FLAG_GRANT_READ_URI_PERMISSION);
         startActivity(next);
         finish();
     }

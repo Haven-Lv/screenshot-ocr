@@ -19,6 +19,7 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     private static final int REQ_PICK = 1001;
     private Cfg cfg;
+    private TextView providerLabel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,9 +42,9 @@ public class MainActivity extends Activity {
         TextView sub = Ui.text(this, "截图 → 分享到本应用 → 云端识别 → 分词选词", 11.5f, Ui.SUB, true, false);
         sub.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         hero.addView(sub);
-        hero.addView(Ui.text(this, "服务：" + cfg.providerName()
-                + (cfg.ready() ? " · 已配置" : " · 未配置"), 11f,
-                cfg.ready() ? Ui.OK : Ui.WARN, true, false));
+        providerLabel = Ui.text(this, "", 11f, Ui.OK, true, false);
+        hero.addView(providerLabel);
+        renderProvider();
         box.addView(hero);
 
         box.addView(Ui.section(this, "操作"));
@@ -57,10 +58,7 @@ public class MainActivity extends Activity {
             startActivityForResult(i, REQ_PICK);
         });
         TextView set = Ui.button(this, "设置", false);
-        set.setOnClickListener(v -> {
-            startActivity(new Intent(this, SettingsActivity.class));
-            finish();
-        });
+        set.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         acts.addView(pick);
         acts.addView(set);
         HorizontalScrollView hsv = new HorizontalScrollView(this);
@@ -118,7 +116,24 @@ public class MainActivity extends Activity {
         }
         box.addView(guide);
 
+        Ui.applyInsets(root);
         setContentView(root);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        cfg = Cfg.load(this);
+        renderProvider();
+    }
+
+    private void renderProvider() {
+        if (providerLabel == null) {
+            return;
+        }
+        providerLabel.setText("服务：" + cfg.providerName()
+                + (cfg.ready() ? " · 已配置" : " · 未配置"));
+        providerLabel.setTextColor(cfg.ready() ? Ui.OK : Ui.WARN);
     }
 
     @Override

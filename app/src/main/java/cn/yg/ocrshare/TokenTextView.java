@@ -9,38 +9,44 @@ import android.text.style.ForegroundColorSpan;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
+import android.view.ViewParent;
 import android.widget.TextView;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 分词视图：一个 TextView + Span 渲染（原生滚动），但每个词元之间插入「窄空格」并加底色，
- * 保证视觉上仍是"一词一块"，不会糊成一段。
+ * 分词视图：一个 TextView + Span（原生滚动），词元之间插窄空格并加底色，视觉上仍是一词一块。
  *
- *  tokens[i] = {rawStart, rawEnd, dispStart, dispEnd}
- *  - raw*  用于复制原文（不含人工插入的窄空格）
- *  - disp* 用于命中测试与高亮
+ * tokens[i] = {rawStart, rawEnd, dispStart, dispEnd}
+ * - raw*  复制原文时使用（不含人工插入的窄空格）
+ * - disp* 命中测试 / 高亮使用
+ *
+ * 关键点（代码审查后修正）：
+ * 1. setText 必须用 BufferType.SPANNABLE，否则 getText() 拿到的是不可变 SpannedString，高亮永远画不出来；
+ * 2. 复制时按 raw 间隙还原换行（保留空行）与空格（英文/数字不被拼成一坨）；
+ * 3. 竖向拖动交给外层 ScrollView（收到 CANCEL 只清高亮），横向拖动才抢事件；
+ * 4. 选区没变化就不重复增删 Span，长文本拖动不掉帧。
  */
 public class TokenTextView extends TextView {
 
-    /** 词元之间的分隔符：U+2009 THIN SPACE，占位很小但足够把相邻色块分开。 */
     private static final char SEP = '\u2009';
     private static final int TOKEN_BG = Color.parseColor("#1B2230");
+    private static final int MAX_BG_SPANS = 1500;
 
     interface OnPick {
         void onPick(String picked);
     }
 
     private final List<int[]> tokens = new ArrayList<>();
-    private final List<BackgroundColorSpan> tokenBgs = new ArrayList<>();
     private String raw = "";
-    private String display = "";
     private OnPick listener;
     private int slop;
     private int anchor = -1;
     private int selA = -1;
     private int selB = -1;
+    private int paintedA = -2;
+    private int paintedB = -2;
     private float downX;
     private float downY;
     private boolean dragging;
@@ -67,37 +73,36 @@ public class TokenTextView extends TextView {
     void setContent(String text) {
         raw = text == null ? "" : text;
         tokens.clear();
-        tokenBgs.clear();
         StringBuilder disp = new StringBuilder();
         List<WordSeg.Token> list = WordSeg.split(raw);
-        boolean pendingBreak = false;
+        int lastEnd = 0;
         for (WordSeg.Token t : list) {
-            if (t.lineBreak) {
-                pendingBreak = true;
+            if (t.lineBreak || t.end <= t.start) {
                 continue;
             }
-            if (t.end <= t.start) {
-                continue;
+            if (disp.length() > 0) {
+                int nl = countNewlines(raw, lastEnd, t.start);
+                for (int k = 0; k < Math.min(nl, 2); k++) {
+                    disp.append('\n');
+                }
             }
-            if (pendingBreak && disp.length() > 0) {
-                disp.append('\n');
-            }
-            pendingBreak = false;
             int ds = disp.length();
             disp.append(raw, t.start, t.end);
             int de = disp.length();
             tokens.add(new int[]{t.start, t.end, ds, de});
             disp.append(SEP);
+            lastEnd = t.end;
         }
-        display = disp.toString();
 
-        SpannableString sp = new SpannableString(display);
-        for (int[] tk : tokens) {
-            BackgroundColorSpan bg = new BackgroundColorSpan(TOKEN_BG);
-            sp.setSpan(bg, tk[2], tk[3], Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            tokenBgs.add(bg);
+        SpannableString sp = new SpannableString(disp.toString());
+        if (tokens.size() <= MAX_BG_SPANS) {
+            for (int[] tk : tokens) {
+                sp.setSpan(new BackgroundColorSpan(TOKEN_BG), tk[2], tk[3],
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
         }
-        setText(sp);
+        // 必须是 SPANNABLE，否则 TextView 会拷贝成不可变 SpannedString，运行期加的 span 全丢
+        setText(sp, BufferType.SPANNABLE);
         clearSelection();
     }
 
@@ -105,10 +110,24 @@ public class TokenTextView extends TextView {
         return tokens.size();
     }
 
+    private static int countNewlines(String s, int from, int to) {
+        int n = 0;
+        int a = Math.max(0, from);
+        int b = Math.min(s.length(), to);
+        for (int i = a; i < b; i++) {
+            if (s.charAt(i) == '\n') {
+                n++;
+            }
+        }
+        return n;
+    }
+
     private void clearSelection() {
         anchor = -1;
         selA = -1;
         selB = -1;
+        paintedA = -2;
+        paintedB = -2;
         removeSpans();
         invalidate();
     }
@@ -134,7 +153,14 @@ public class TokenTextView extends TextView {
     }
 
     private void paintSelection(int a, int b) {
-        if (tokens.isEmpty()) {
+        if (tokens.isEmpty() || a < 0 || b < 0) {
+            removeSpans();
+            paintedA = -2;
+            paintedB = -2;
+            invalidate();
+            return;
+        }
+        if (a == paintedA && b == paintedB) {
             return;
         }
         int ia = Math.max(0, Math.min(a, b));
@@ -150,6 +176,8 @@ public class TokenTextView extends TextView {
         fgSpan = new ForegroundColorSpan(Color.parseColor("#041513"));
         sp.setSpan(bgSpan, ds, de, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         sp.setSpan(fgSpan, ds, de, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        paintedA = a;
+        paintedB = b;
         invalidate();
     }
 
@@ -170,7 +198,6 @@ public class TokenTextView extends TextView {
                 return mid;
             }
         }
-        // 落在窄空格/换行上：取前一个词元
         for (int i = tokens.size() - 1; i >= 0; i--) {
             if (tokens.get(i)[3] <= offset) {
                 return i;
@@ -179,8 +206,9 @@ public class TokenTextView extends TextView {
         return 0;
     }
 
+    /** 复制：按原文间隙还原换行与空格，保证英文/数字不被拼成一个词。 */
     private String pick(int a, int b) {
-        if (tokens.isEmpty()) {
+        if (tokens.isEmpty() || a < 0 || b < 0) {
             return "";
         }
         int ia = Math.max(0, Math.min(a, b));
@@ -188,15 +216,28 @@ public class TokenTextView extends TextView {
         StringBuilder sb = new StringBuilder();
         for (int i = ia; i <= ib; i++) {
             int[] t = tokens.get(i);
-            if (sb.length() > 0) {
+            if (i > ia) {
                 int prevEnd = tokens.get(i - 1)[1];
-                if (raw.substring(prevEnd, t[0]).contains("\n")) {
-                    sb.append('\n');
+                int nl = countNewlines(raw, prevEnd, t[0]);
+                if (nl > 0) {
+                    for (int k = 0; k < nl; k++) {
+                        sb.append('\n');
+                    }
+                } else if (t[0] > prevEnd) {
+                    // 原本有空格/缩进：折叠成一个空格，避免 "PowerPointPresentation"
+                    sb.append(' ');
                 }
             }
             sb.append(raw, t[0], t[1]);
         }
         return sb.toString();
+    }
+
+    private void disallowParent(boolean disallow) {
+        ViewParent p = getParent();
+        if (p != null) {
+            p.requestDisallowInterceptTouchEvent(disallow);
+        }
     }
 
     @Override
@@ -207,12 +248,16 @@ public class TokenTextView extends TextView {
                     return false;
                 }
                 anchor = tokenAt(getOffsetForPosition(e.getX(), e.getY()));
+                if (anchor < 0) {
+                    return false; // 点在空白/padding：交给外层滚动
+                }
                 selA = anchor;
                 selB = anchor;
+                paintedA = -2;
+                paintedB = -2;
                 dragging = false;
                 downX = e.getX();
                 downY = e.getY();
-                paintSelection(anchor, anchor);
                 return true;
             }
             case MotionEvent.ACTION_MOVE: {
@@ -220,6 +265,7 @@ public class TokenTextView extends TextView {
                 float dy = Math.abs(e.getY() - downY);
                 if (!dragging && dx > slop && dx > dy) {
                     dragging = true;
+                    disallowParent(true); // 横向选择期间别让 ScrollView 抢走手势
                 }
                 if (dragging) {
                     int t = tokenAt(getOffsetForPosition(e.getX(), e.getY()));
@@ -242,10 +288,12 @@ public class TokenTextView extends TextView {
                         listener.onPick(picked);
                     }
                 }
+                disallowParent(false);
                 clearSelection();
                 return true;
             }
             case MotionEvent.ACTION_CANCEL: {
+                disallowParent(false);
                 clearSelection();
                 return true;
             }

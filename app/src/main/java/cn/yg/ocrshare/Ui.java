@@ -2,11 +2,15 @@ package cn.yg.ocrshare;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -24,6 +28,31 @@ final class Ui {
     static final int OK = Color.parseColor("#38E08A");
 
     private Ui() {
+    }
+
+    /** targetSdk 36 强制 edge-to-edge：把状态栏/导航栏/输入法的高度加回根布局 padding。 */
+    static void applyInsets(final View root) {
+        if (root == null) {
+            return;
+        }
+        final int baseTop = root.getPaddingTop();
+        final int baseBottom = root.getPaddingBottom();
+        root.setOnApplyWindowInsetsListener((v, ins) -> {
+            int t;
+            int b;
+            if (Build.VERSION.SDK_INT >= 30) {
+                Insets i = ins.getInsets(WindowInsets.Type.systemBars()
+                        | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+                t = i.top;
+                b = i.bottom;
+            } else {
+                t = ins.getSystemWindowInsetTop();
+                b = ins.getSystemWindowInsetBottom();
+            }
+            v.setPadding(v.getPaddingLeft(), baseTop + t, v.getPaddingRight(), baseBottom + b);
+            return ins;
+        });
+        root.requestApplyInsets();
     }
 
     static int dp(Context c, float v) {

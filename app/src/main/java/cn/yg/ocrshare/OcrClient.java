@@ -1,5 +1,7 @@
 package cn.yg.ocrshare;
 
+import android.util.Base64;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -58,11 +60,17 @@ final class OcrClient {
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
         conn.setRequestProperty("apikey", cfg.ocrSpaceKey);
-        try (OutputStream os = conn.getOutputStream()) {
-            body.writeTo(os);
+        int code;
+        String resp;
+        try {
+            try (OutputStream os = conn.getOutputStream()) {
+                body.writeTo(os);
+            }
+            code = conn.getResponseCode();
+            resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
+        } finally {
+            conn.disconnect();
         }
-        int code = conn.getResponseCode();
-        String resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
         if (code >= 400) {
             throw new Exception("OCR.space HTTP " + code + " · " + clip(resp));
         }
@@ -118,8 +126,15 @@ final class OcrClient {
         final String region = cfg.tencentRegion == null || cfg.tencentRegion.isEmpty()
                 ? "ap-guangzhou" : cfg.tencentRegion;
 
-        String bodyStr = "{\"ImageBase64\":\"" + Img.base64(jpeg) + "\",\"LanguageType\":\"zh\"}";
-        byte[] bodyBytes = bodyStr.getBytes(StandardCharsets.UTF_8);
+        // 分块 base64 直接写进缓冲，避免 "String + byte[]" 两份中间拷贝（大图在低端机会 OOM）
+        ByteArrayOutputStream bodyBuf = new ByteArrayOutputStream(jpeg.length * 2 + 64);
+        bodyBuf.write("{\"ImageBase64\":\"".getBytes(StandardCharsets.UTF_8));
+        for (int off = 0; off < jpeg.length; off += 768) {
+            int len = Math.min(768, jpeg.length - off);
+            bodyBuf.write(Base64.encode(jpeg, off, len, Base64.NO_WRAP));
+        }
+        bodyBuf.write("\",\"LanguageType\":\"zh\"}".getBytes(StandardCharsets.UTF_8));
+        byte[] bodyBytes = bodyBuf.toByteArray();
 
         long ts = System.currentTimeMillis() / 1000L;
         SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
@@ -149,16 +164,21 @@ final class OcrClient {
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Authorization", authorization);
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        conn.setRequestProperty("Host", host);
         conn.setRequestProperty("X-TC-Action", action);
         conn.setRequestProperty("X-TC-Timestamp", String.valueOf(ts));
         conn.setRequestProperty("X-TC-Version", version);
         conn.setRequestProperty("X-TC-Region", region);
-        try (OutputStream os = conn.getOutputStream()) {
-            os.write(bodyBytes);
+        int code;
+        String resp;
+        try {
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(bodyBytes);
+            }
+            code = conn.getResponseCode();
+            resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
+        } finally {
+            conn.disconnect();
         }
-        int code = conn.getResponseCode();
-        String resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
         if (code >= 400) {
             throw new Exception("腾讯云 HTTP " + code + " · " + clip(resp));
         }

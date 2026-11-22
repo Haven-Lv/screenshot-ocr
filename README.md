@@ -2,7 +2,7 @@
 
 截图 → 系统分享 → 本应用 → 云端 OCR → 结果页。中文分词后按住词块滑动即可区间取词，分词区**按原文换行**排版，不显示回车符。
 
-- 最新版：**v1.4.1**（versionCode 15，minSdk 26 / targetSdk 36）
+- 最新版：**v1.5.0**（versionCode 17，minSdk 26 / targetSdk 36）
 - 包名：`cn.yg.ocrshare`
 - 体积：约 33 KB，无第三方依赖（纯 framework + `org.json`）
 
@@ -10,7 +10,7 @@
 
 直接去 **Releases** 页下载 APK 安装即可：
 
-**[→ 下载最新版 ScreenshotOCR-1.4.1.apk](https://github.com/Haven-Lv/screenshot-ocr/releases/latest)**
+**[→ 下载最新版 ScreenshotOCR-1.5.0.apk](https://github.com/Haven-Lv/screenshot-ocr/releases/latest)**
 
 - 手机浏览器打开上面的链接，或电脑下载后传到手机；
 - 首次安装需在系统里允许「安装未知来源应用」；
@@ -58,13 +58,13 @@ python tools/build_cli.py --clean
 
 ```
 app/src/main/java/cn/yg/ocrshare/
-├── MainActivity.java      启动页：选图识别 / 设置 / 上次结果
+├── MainActivity.java      启动页：选图识别 / 设置 / 最近 3 条历史
 ├── ShareActivity.java     透明分享入口（SEND image/*）
 ├── ResultActivity.java    识别、结果编辑、分词选词
 ├── SettingsActivity.java  provider / 密钥 / 压缩参数
 ├── OcrClient.java         OCR.space(multipart) + 腾讯云(TC3)
 ├── WordSeg.java           ICU BreakIterator 分词（带规则兜底）
-├── FlowSelectView.java    词块流式布局 + 滑动区间选择 + 原文换行
+├── TokenTextView.java    单 TextView + Span 分词视图（点选/横拖/原生滚动）
 ├── Img.java               解码 / EXIF 转正 / 缩放 / 压缩 / base64
 ├── Cfg.java               SharedPreferences 配置
 └── Ui.java                深色 UI 组件
@@ -72,6 +72,7 @@ app/src/main/java/cn/yg/ocrshare/
 
 ## 更新日志
 
+- **v1.5.0**：按代码审查修 1 个阻塞 + 7 个重要问题——选区高亮失效（`BufferType.SPANNABLE`）、英文复制丢空格、空行被折叠、设置不生效、连分享叠页、旋转重复下单/旧结果覆盖、edge-to-edge 未处理 insets、大图内存；provider 切换即时保存。
 - **v1.4.1**：恢复"看得见的分词"——每个词元插入窄空格分隔 + 独立底色，视觉上仍是一词一块（v1.4.0 重构成单 TextView 后词块边界消失了）。
 - **v1.4.0**：分词视图重写为单 TextView + Span（滚动交还系统，修掉"不跟手/拖影/快不起来"）；首页改为最近 3 行历史，点进去复用同一分词视图。
 - **v1.3.0**：去掉顶部可编辑结果框，整屏改为分词区；手势统一由容器判定（竖向拖动只滚动、松手不复制），词块区上下留白加大。
