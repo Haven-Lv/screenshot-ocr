@@ -42,8 +42,9 @@ public class SettingsActivity extends Activity {
         LinearLayout pCard = Ui.card(this, Ui.CARD, Ui.LINE);
         providerView = Ui.text(this, "", 14f, Ui.ACCENT, false, true);
         pCard.addView(providerView);
-        TextView hint = Ui.text(this, "OCR.space：填 apikey 即可，免费 500 次/天/IP，中文用 engine 2。\n"
-                + "腾讯云：填 SecretId / SecretKey，通用印刷体 1000 次/月，中文更准。", 11f, Ui.SUB, false, false);
+        TextView hint = Ui.text(this, "OCR.space：填 apikey，免费 500 次/天/IP，中文一般。\n"
+                + "腾讯云·通用 GeneralBasicOCR：1000 次/月，日常截图够用。\n"
+                + "腾讯云·高精度 GeneralAccurateOCR：同一份免费额度，小字/密排更准，代价是慢一点。", 11f, Ui.SUB, false, false);
         hint.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         pCard.addView(hint);
         LinearLayout pRow = new LinearLayout(this);
@@ -53,13 +54,19 @@ public class SettingsActivity extends Activity {
             cfg.provider = Cfg.PROVIDER_OCRSPACE;
             renderProvider();
         });
-        TextView useTc = Ui.button(this, "用腾讯云", false);
+        TextView useTc = Ui.button(this, "腾讯云·通用", false);
         useTc.setOnClickListener(v -> {
             cfg.provider = Cfg.PROVIDER_TENCENT;
             renderProvider();
         });
+        TextView useAcc = Ui.button(this, "腾讯云·高精度", false);
+        useAcc.setOnClickListener(v -> {
+            cfg.provider = Cfg.PROVIDER_TENCENT_ACC;
+            renderProvider();
+        });
         pRow.addView(useSpace);
         pRow.addView(useTc);
+        pRow.addView(useAcc);
         pCard.addView(pRow);
         box.addView(pCard);
 
@@ -108,7 +115,7 @@ public class SettingsActivity extends Activity {
 
     private void renderProvider() {
         providerView.setText("当前：" + cfg.providerName());
-        if (cfg.provider == Cfg.PROVIDER_TENCENT) {
+        if (cfg.provider != Cfg.PROVIDER_OCRSPACE) {
             providerView.setTextColor(Ui.ACCENT);
         } else {
             providerView.setTextColor(Ui.WARN);

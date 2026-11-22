@@ -7,6 +7,8 @@ import android.content.SharedPreferences;
 final class Cfg {
     static final int PROVIDER_OCRSPACE = 0;
     static final int PROVIDER_TENCENT = 1;
+    /** 腾讯云 通用文字识别（高精度版）GeneralAccurateOCR，对截图/小字更稳 */
+    static final int PROVIDER_TENCENT_ACC = 2;
 
     int provider = PROVIDER_OCRSPACE;
     String ocrSpaceKey = "HELLOWORLD";
@@ -45,11 +47,17 @@ final class Cfg {
     }
 
     String providerName() {
-        return provider == PROVIDER_TENCENT ? "腾讯云 OCR" : "OCR.space";
+        if (provider == PROVIDER_TENCENT) {
+            return "腾讯云·通用版";
+        }
+        if (provider == PROVIDER_TENCENT_ACC) {
+            return "腾讯云·高精度";
+        }
+        return "OCR.space";
     }
 
     boolean ready() {
-        if (provider == PROVIDER_TENCENT) {
+        if (provider != PROVIDER_OCRSPACE) {
             return !tencentId.trim().isEmpty() && !tencentKey.trim().isEmpty();
         }
         return !ocrSpaceKey.trim().isEmpty();

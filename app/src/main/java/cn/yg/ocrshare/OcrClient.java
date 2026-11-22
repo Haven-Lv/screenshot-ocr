@@ -26,7 +26,10 @@ final class OcrClient {
 
     static String recognize(Cfg cfg, byte[] jpeg, String lang) throws Exception {
         if (cfg.provider == Cfg.PROVIDER_TENCENT) {
-            return tencent(cfg, jpeg);
+            return tencent(cfg, jpeg, "GeneralBasicOCR");
+        }
+        if (cfg.provider == Cfg.PROVIDER_TENCENT_ACC) {
+            return tencent(cfg, jpeg, "GeneralAccurateOCR");
         }
         return ocrSpace(cfg, jpeg, lang);
     }
@@ -107,10 +110,10 @@ final class OcrClient {
 
     // ------------------------------------------------------------ 腾讯云
 
-    static String tencent(Cfg cfg, byte[] jpeg) throws Exception {
+    static String tencent(Cfg cfg, byte[] jpeg, String apiAction) throws Exception {
         final String host = "ocr.tencentcloudapi.com";
         final String service = "ocr";
-        final String action = "GeneralBasicOCR";
+        final String action = apiAction;
         final String version = "2018-11-19";
         final String region = cfg.tencentRegion == null || cfg.tencentRegion.isEmpty()
                 ? "ap-guangzhou" : cfg.tencentRegion;

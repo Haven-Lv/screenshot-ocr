@@ -2,7 +2,7 @@
 
 截图 → 系统分享 → 本应用 → 云端 OCR → 结果页。中文分词后按住词块滑动即可区间取词，分词区**按原文换行**排版，不显示回车符。
 
-- 最新版：**v1.1.7**（versionCode 9，minSdk 26 / targetSdk 36）
+- 最新版：**v1.1.8**（versionCode 10，minSdk 26 / targetSdk 36）
 - 包名：`cn.yg.ocrshare`
 - 体积：约 33 KB，无第三方依赖（纯 framework + `org.json`）
 
@@ -10,7 +10,7 @@
 
 直接去 **Releases** 页下载 APK 安装即可：
 
-**[→ 下载最新版 ScreenshotOCR-1.1.7.apk](https://github.com/Haven-Lv/screenshot-ocr/releases/latest)**
+**[→ 下载最新版 ScreenshotOCR-1.1.8.apk](https://github.com/Haven-Lv/screenshot-ocr/releases/latest)**
 
 - 手机浏览器打开上面的链接，或电脑下载后传到手机；
 - 首次安装需在系统里允许「安装未知来源应用」；
@@ -24,7 +24,7 @@
 | 可编辑结果 | 结果落在一个多行编辑框，支持手动修正、复制、再分享 |
 | 分词选词 | Android 自带 ICU 词典离线分词；**按住词块横向滑动 = 区间选择**，松手自动复制 |
 | 按原文换行 | 分词区不再出现 ↵ 词块，遇到原文换行就另起一行，复制出来的文本与原文断行一致 |
-| 双 provider | OCR.space（免签名，500 次/天/IP）与腾讯云通用印刷体（1000 次/月，TC3 签名已内置） |
+| 三种 provider | OCR.space（免签名，500 次/天/IP）· 腾讯云通用 `GeneralBasicOCR` · 腾讯云高精度 `GeneralAccurateOCR`（同一份 1000 次/月免费额度，TC3 签名已内置） |
 | 图片预处理 | 自动按 EXIF 转正、长边压到 2000px、JPEG q80（>950KB 自动降到 q60） |
 | 零配置可跑 | 默认 OCR.space 官方测试 key `HELLOWORLD`，开箱即用（有全局限流，建议换自己的） |
 
@@ -39,7 +39,9 @@
 设置页两种 provider 二选一：
 
 - **OCR.space**：填 apikey，免费申请 https://ocr.space/ocrapi/freekey（500 次/天/IP）。中文固定走 `OCREngine=2`。
-- **腾讯云**：填 SecretId / SecretKey，地域默认 `ap-guangzhou`，接口 `GeneralBasicOCR`，1000 次/月。TC3-HMAC-SHA256 由 `OcrClient.tencent()` 现场计算；鉴权失败会提示检查密钥与设备时间。
+- **腾讯云**：填 SecretId / SecretKey，地域默认 `ap-guangzhou`，1000 次/月。两个按钮对应 `GeneralBasicOCR`（快）与 `GeneralAccurateOCR`（准，小字/密排更稳）。TC3-HMAC-SHA256 由 `OcrClient.tencent()` 现场计算；鉴权失败会提示检查密钥与设备时间。
+
+密钥获取：https://console.cloud.tencent.com/cam/capi （新建密钥 → 拿 SecretId / SecretKey）；OCR 服务在 https://console.cloud.tencent.com/ocr 开通，需先完成实名认证。
 
 ## 构建
 
@@ -68,6 +70,7 @@ app/src/main/java/cn/yg/ocrshare/
 
 ## 更新日志
 
+- **v1.1.8**：新增「腾讯云·高精度」`GeneralAccurateOCR` 选项（与通用版共用 1000 次/月额度），设置页三选一。
 - **v1.1.7**：分词区按原文换行（去掉 ↵ 词块）；README 安装说明改为走 Release。
 - v1.1.6：分词选词（滑动区间）、点选复制。
 - v1.1.0 ~ 1.1.5：双 provider、TC3 签名、结果可编辑、EXIF/压缩、分享入口。
