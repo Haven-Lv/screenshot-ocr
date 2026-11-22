@@ -1,32 +1,33 @@
 package cn.yg.ocrshare;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Color;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewParent;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 文字方块流式布局 + 滑动区间选择（类似输入法里"复制后滑动选词"）。
- * DOWN 定锚点，MOVE 扩展区间，UP 回调选中区间。
+ * 词块流式布局 + 手势：
+ *  - 竖向拖动：滚动外层 ScrollView（不复制，避免"想滑动却误触发复制"）
+ *  - 横向拖动：区间选择
+ *  - 轻点：复制该词
+ *
+ * 手势统一在容器处理（onInterceptTouchEvent 直接拦下），不依赖子 View 的点击，
+ * 这样滑动手势和点击判定不会互相打架。
  */
 final class FlowSelectView extends ViewGroup {
 
     interface PickListener {
         void onPick(int first, int last, boolean fromDrag);
     }
-
-    private final List<Token> tokens = new ArrayList<>();
-    private final List<TextView> chips = new ArrayList<>();
-    private final int gap;
-    private PickListener listener;
-    private int anchor = -1;
-    private int selMin = -1;
-    private int selMax = -1;
 
     static final class Token {
         final WordSeg.Token src;
@@ -38,6 +39,19 @@ final class FlowSelectView extends ViewGroup {
         }
     }
 
+    private final List<Token> tokens = new ArrayList<>();
+    private final List<TextView> chips = new ArrayList<>();
+    private final int gap;
+    private final int touchSlop;
+    private PickListener listener;
+    private int anchor = -1;
+    private int selMin = -1;
+    private int selMax = -1;
+    private float downX;
+    private float downY;
+    private float lastY;
+    private boolean scrolling;
+
     FlowSelectView(Context c) {
         this(c, null);
     }
@@ -45,6 +59,7 @@ final class FlowSelectView extends ViewGroup {
     FlowSelectView(Context c, AttributeSet attrs) {
         super(c, attrs);
         gap = Ui.dp(c, 4);
+        touchSlop = ViewConfiguration.get(c).getScaledTouchSlop();
         setClipChildren(false);
     }
 
@@ -75,35 +90,6 @@ final class FlowSelectView extends ViewGroup {
             tv.setSingleLine(true);
             tv.setTextColor(Ui.TEXT);
             tv.setBackground(Ui.round(getContext(), Ui.CARD_ALT, Ui.LINE, 9f));
-            final int index = chips.size();
-            tv.setOnTouchListener((v, ev) -> {
-                switch (ev.getActionMasked()) {
-                    case MotionEvent.ACTION_DOWN:
-                        anchor = index;
-                        selMin = index;
-                        selMax = index;
-                        repaint();
-                        return true;
-                    case MotionEvent.ACTION_MOVE: {
-                        int target = hitRaw(ev.getRawX(), ev.getRawY());
-                        if (target >= 0 && anchor >= 0) {
-                            selMin = Math.min(anchor, target);
-                            selMax = Math.max(anchor, target);
-                            repaint();
-                        }
-                        return true;
-                    }
-                    case MotionEvent.ACTION_UP:
-                    case MotionEvent.ACTION_CANCEL: {
-                        if (listener != null && selMin >= 0) {
-                            listener.onPick(selMin, selMax, selMax > selMin);
-                        }
-                        return true;
-                    }
-                    default:
-                        return false;
-                }
-            });
             chips.add(tv);
             addView(tv);
         }
@@ -132,13 +118,6 @@ final class FlowSelectView extends ViewGroup {
         return sb.toString();
     }
 
-    void clearSelection() {
-        anchor = -1;
-        selMin = -1;
-        selMax = -1;
-        repaint();
-    }
-
     private void repaint() {
         for (int i = 0; i < chips.size(); i++) {
             boolean on = selMin >= 0 && i >= selMin && i <= selMax;
@@ -151,6 +130,12 @@ final class FlowSelectView extends ViewGroup {
                 tv.setBackground(Ui.round(getContext(), Ui.CARD_ALT, Ui.LINE, 9f));
             }
         }
+    }
+
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent ev) {
+        // 全部手势归容器，子 TextView 不参与，避免"点/滑"判定互相覆盖
+        return !chips.isEmpty();
     }
 
     @Override
@@ -185,12 +170,6 @@ final class FlowSelectView extends ViewGroup {
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         int avail = getWidth() - getPaddingLeft() - getPaddingRight();
-        if (getChildCount() > 0) {
-            int[] p = new int[2];
-            getChildAt(0).getLocationOnScreen(p);
-            android.util.Log.i("FlowSel", "layout w=" + getWidth() + " h=" + getHeight()
-                    + " chip0=" + p[0] + "," + p[1] + " chipH=" + getChildAt(0).getHeight());
-        }
         int x = getPaddingLeft();
         int y = getPaddingTop();
         int lineH = 0;
@@ -217,55 +196,71 @@ final class FlowSelectView extends ViewGroup {
         }
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN: {
-                // 按在词块间隙也吃下事件：手指滑进词块后再定锚点，避免"点空了没反应"
-                int i = hit(e.getX(), e.getY());
-                android.util.Log.i("FlowSel", "DOWN x=" + e.getX() + " y=" + e.getY() + " hit=" + i
-                        + " children=" + getChildCount());
-                anchor = i;
-                if (i >= 0) {
-                    selMin = i;
-                    selMax = i;
+                ViewParent p = getParent();
+                if (p != null) {
+                    p.requestDisallowInterceptTouchEvent(true);
+                }
+                anchor = hit(e.getX(), e.getY());
+                selMin = anchor >= 0 ? anchor : -1;
+                selMax = selMin;
+                scrolling = false;
+                downX = e.getX();
+                downY = e.getY();
+                lastY = downY;
+                if (anchor >= 0) {
                     repaint();
                 }
                 return true;
             }
             case MotionEvent.ACTION_MOVE: {
-                int i = hit(e.getX(), e.getY());
-                if (i >= 0) {
-                    if (anchor < 0) {
-                        anchor = i;
-                    }
-                    selMin = Math.min(anchor, i);
-                    selMax = Math.max(anchor, i);
+                float dy = Math.abs(e.getY() - downY);
+                float dx = Math.abs(e.getX() - downX);
+                if (!scrolling && dy > touchSlop && dy > dx) {
+                    scrolling = true;
+                    // 从"选择"切到"滚动"：清掉高亮，避免看起来像选中了
+                    selMin = -1;
+                    selMax = -1;
                     repaint();
+                }
+                if (scrolling) {
+                    ViewParent p = getParent();
+                    if (p instanceof ScrollView) {
+                        ((ScrollView) p).scrollBy(0, (int) (lastY - e.getY()));
+                    }
+                    lastY = e.getY();
+                    return true;
+                }
+                int target = hit(e.getX(), e.getY());
+                if (target >= 0) {
+                    if (anchor < 0) {
+                        anchor = target;
+                    }
+                    selMin = Math.min(anchor, target);
+                    selMax = Math.max(anchor, target);
+                    repaint();
+                }
+                lastY = e.getY();
+                return true;
+            }
+            case MotionEvent.ACTION_UP: {
+                boolean wasScroll = scrolling;
+                scrolling = false;
+                if (!wasScroll && listener != null && selMin >= 0) {
+                    listener.onPick(selMin, selMax, selMax > selMin);
                 }
                 return true;
             }
-            case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL: {
-                boolean drag = selMin >= 0 && selMax > selMin;
-                android.util.Log.i("FlowSel", "UP sel=" + selMin + ".." + selMax + " drag=" + drag);
-                if (listener != null && selMin >= 0) {
-                    listener.onPick(selMin, selMax, drag);
-                }
+                // 手势被打断（比如页面切换）：绝不当成一次点击去复制
+                scrolling = false;
+                selMin = -1;
+                selMax = -1;
+                repaint();
                 return true;
             }
             default:
                 return super.onTouchEvent(e);
         }
-    }
-
-    private int hitRaw(float rawX, float rawY) {
-        int[] loc = new int[2];
-        for (int i = 0; i < getChildCount(); i++) {
-            android.view.View v = getChildAt(i);
-            v.getLocationOnScreen(loc);
-            if (rawX >= loc[0] && rawX <= loc[0] + v.getWidth()
-                    && rawY >= loc[1] && rawY <= loc[1] + v.getHeight()) {
-                return i;
-            }
-        }
-        return -1;
     }
 
     private int hit(float x, float y) {
