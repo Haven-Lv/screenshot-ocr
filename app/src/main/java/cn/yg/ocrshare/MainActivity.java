@@ -1,7 +1,6 @@
 package cn.yg.ocrshare;
 
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -11,6 +10,11 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends Activity {
     private static final int REQ_PICK = 1001;
@@ -33,15 +37,13 @@ public class MainActivity extends Activity {
         TextView kicker = Ui.text(this, "SHARE-TARGET OCR", 10f, Ui.ACCENT, true, false);
         kicker.setLetterSpacing(0.22f);
         hero.addView(kicker);
-        TextView title = Ui.text(this, "截图取字", 25f, Ui.TEXT, false, true);
-        hero.addView(title);
-        TextView sub = Ui.text(this, "截图 → 分享到本应用 → 云端识别 → 复制/分享文字", 11.5f, Ui.SUB, true, false);
+        hero.addView(Ui.text(this, "截图取字", 25f, Ui.TEXT, false, true));
+        TextView sub = Ui.text(this, "截图 → 分享到本应用 → 云端识别 → 分词选词", 11.5f, Ui.SUB, true, false);
         sub.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         hero.addView(sub);
-        TextView prov = Ui.text(this, "服务：" + cfg.providerName()
+        hero.addView(Ui.text(this, "服务：" + cfg.providerName()
                 + (cfg.ready() ? " · 已配置" : " · 未配置"), 11f,
-                cfg.ready() ? Ui.OK : Ui.WARN, true, false);
-        hero.addView(prov);
+                cfg.ready() ? Ui.OK : Ui.WARN, true, false));
         box.addView(hero);
 
         box.addView(Ui.section(this, "操作"));
@@ -66,22 +68,48 @@ public class MainActivity extends Activity {
         hsv.addView(acts);
         box.addView(hsv);
 
-        box.addView(Ui.section(this, "上次结果"));
-        LinearLayout lastCard = Ui.card(this, Ui.CARD, Ui.LINE);
-        String last = getSharedPreferences("last", Context.MODE_PRIVATE).getString("text", "");
-        TextView lastView = Ui.text(this, last.isEmpty() ? "还没有识别记录" : last, 12f,
-                last.isEmpty() ? Ui.SUB : Ui.TEXT, true, false);
-        lastView.setTextIsSelectable(true);
-        lastCard.addView(lastView);
-        box.addView(lastCard);
+        box.addView(Ui.section(this, "最近 3 次"));
+        LinearLayout histCard = Ui.card(this, Ui.CARD, Ui.LINE);
+        List<History.Entry> list = History.list(this);
+        if (list.isEmpty()) {
+            histCard.addView(Ui.text(this, "还没有识别记录", 12f, Ui.SUB, true, false));
+        } else {
+            SimpleDateFormat fmt = new SimpleDateFormat("HH:mm", Locale.US);
+            for (int i = 0; i < list.size(); i++) {
+                History.Entry e = list.get(i);
+                String preview = e.text.replace("\n", " ").trim();
+                if (preview.length() > 14) {
+                    preview = preview.substring(0, 14) + "…";
+                }
+                TextView row = Ui.text(this, fmt.format(new Date(e.at)) + "  " + preview + "  (" + e.text.length() + " 字)",
+                        12.5f, Ui.TEXT, false, false);
+                row.setSingleLine(true);
+                row.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
+                final String text = e.text;
+                row.setOnClickListener(v -> {
+                    Intent intent = new Intent(this, ResultActivity.class);
+                    intent.putExtra(ResultActivity.EXTRA_TEXT, text);
+                    startActivity(intent);
+                });
+                histCard.addView(row);
+                if (i < list.size() - 1) {
+                    TextView line = Ui.text(this, " ", 1f, Ui.LINE, false, false);
+                    line.setBackgroundColor(Ui.LINE);
+                    line.setLayoutParams(new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, 1));
+                    histCard.addView(line);
+                }
+            }
+        }
+        box.addView(histCard);
 
         box.addView(Ui.section(this, "怎么用"));
         LinearLayout guide = Ui.card(this, Ui.CARD, Ui.LINE);
         String[] steps = new String[]{
                 "1. 截图后在相册/截图预览里点「分享」，选「截图取字」。",
-                "2. 应用会自动识别并停在结果页，可直接编辑、复制、再分享。",
-                "3. 微信聊天里的图片：长按 → 分享，同样能进来（content:// 也能读）。",
-                "4. 首次用 OCR.space 的 HELLOWORLD 就能跑；量大或要更准，去设置里填自己的 key 或腾讯云密钥。"
+                "2. 结果页只有一个分词视图：上下滑动原生滚动，轻点复制单词，横向拖过复制整段。",
+                "3. 首页只保留最近 3 次，点任意一条可重新进入分词视图。",
+                "4. 首次用 OCR.space 的 key 就能跑；要更准去设置里切「腾讯云·高精度」。"
         };
         for (String s : steps) {
             TextView tv = Ui.text(this, s, 12f, Ui.TEXT, false, false);

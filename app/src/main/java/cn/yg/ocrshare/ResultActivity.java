@@ -20,17 +20,17 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * 结果页：只保留「分词选词」。词块区上下可滑（竖向拖动由词块自己驱动外层滚动），
- * 轻点复制单词，横向拖动区间选择；顶部不再有可编辑文本框。
+ * 结果页：一个 TextView + Span 的分词视图（原生滚动，跟手不拖影）。
+ * 支持两种进入方式：分享/选图（跑 OCR），或从首页历史点进来（直接显示文本）。
  */
 public class ResultActivity extends Activity {
-    private static final String PREFS = "last";
+    public static final String EXTRA_TEXT = "text";
 
     private Uri imageUri;
     private String lastText = "";
     private TextView status;
     private TextView selHint;
-    private FlowSelectView flow;
+    private TokenTextView tokenView;
     private Cfg cfg;
     private final ExecutorService pool = Executors.newSingleThreadExecutor();
 
@@ -57,22 +57,20 @@ public class ResultActivity extends Activity {
         root.addView(hero);
 
         root.addView(Ui.section(this, "分词选词"));
-        LinearLayout pickCard = Ui.card(this, Ui.CARD, Ui.LINE);
-        pickCard.setLayoutParams(new LinearLayout.LayoutParams(
+        LinearLayout card = Ui.card(this, Ui.CARD, Ui.LINE);
+        card.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        pickCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 14), Ui.dp(this, 10));
+        card.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 14), Ui.dp(this, 10));
 
-        selHint = Ui.text(this, "上下滑动浏览 · 轻点词块复制该词 · 横向滑动区间选择",
+        selHint = Ui.text(this, "上下滑动浏览（原生滚动）· 轻点复制单词 · 横向拖过复制整段",
                 10.5f, Ui.SUB, true, false);
         selHint.setLineSpacing(Ui.dp(this, 3), 1f);
-        pickCard.addView(selHint);
+        card.addView(selHint);
 
-        flow = new FlowSelectView(this);
-        // 词块四周留白：手指落在留白/间隙里就是纯滑动，不会误触复制
-        flow.setPadding(Ui.dp(this, 2), Ui.dp(this, 18), Ui.dp(this, 2), Ui.dp(this, 26));
-        flow.setPickListener((first, last, drag) -> {
-            String picked = flow.textOf(first, last);
-            if (picked.isEmpty()) {
+        tokenView = new TokenTextView(this);
+        tokenView.setPadding(Ui.dp(this, 2), Ui.dp(this, 16), Ui.dp(this, 2), Ui.dp(this, 24));
+        tokenView.setPickListener(picked -> {
+            if (picked.trim().isEmpty()) {
                 return;
             }
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -84,13 +82,13 @@ public class ResultActivity extends Activity {
             selHint.setText("已复制 " + picked.length() + " 字：" + preview.replace("\n", " "));
             toast("已复制：" + preview.replace("\n", " "));
         });
-        ScrollView flowScroll = new ScrollView(this);
-        flowScroll.setLayoutParams(new LinearLayout.LayoutParams(
+        ScrollView scroll = new ScrollView(this);
+        scroll.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        flowScroll.setClipToPadding(false);
-        flowScroll.addView(flow);
-        pickCard.addView(flowScroll);
-        root.addView(pickCard);
+        scroll.setClipToPadding(false);
+        scroll.addView(tokenView);
+        card.addView(scroll);
+        root.addView(card);
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -117,7 +115,13 @@ public class ResultActivity extends Activity {
             startActivity(Intent.createChooser(i, "分享识别结果"));
         });
         TextView retry = Ui.button(this, "重新识别", false);
-        retry.setOnClickListener(v -> runOcr());
+        retry.setOnClickListener(v -> {
+            if (imageUri == null) {
+                toast("这是历史记录，没有原图");
+                return;
+            }
+            runOcr();
+        });
         TextView st = Ui.button(this, "设置", false);
         st.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         actions.addView(copyAll);
@@ -134,7 +138,12 @@ public class ResultActivity extends Activity {
 
         setContentView(root);
 
+        String histText = getIntent() == null ? null : getIntent().getStringExtra(EXTRA_TEXT);
         imageUri = pickImage(getIntent());
+        if (histText != null) {
+            showText(histText, "历史记录");
+            return;
+        }
         if (imageUri == null) {
             status.setTextColor(Ui.ERR);
             status.setText("没有拿到图片");
@@ -150,7 +159,6 @@ public class ResultActivity extends Activity {
         Uri next = pickImage(intent);
         if (next != null) {
             imageUri = next;
-            lastText = "";
             runOcr();
         }
     }
@@ -177,11 +185,19 @@ public class ResultActivity extends Activity {
         return intent.getData();
     }
 
+    private void showText(String text, String source) {
+        lastText = text;
+        tokenView.setContent(text);
+        selHint.setTextColor(Ui.SUB);
+        selHint.setText("共 " + text.length() + " 字 / " + tokenView.tokenCount()
+                + " 词元 · 上下滑动 · 轻点复制 · 横向拖过复制整段");
+        status.setTextColor(Ui.OK);
+        status.setText(source + " · " + text.length() + " 字");
+    }
+
     private void runOcr() {
         final Uri uri = imageUri;
         if (uri == null) {
-            status.setTextColor(Ui.ERR);
-            status.setText("没有拿到图片");
             return;
         }
         status.setTextColor(Ui.SUB);
@@ -195,17 +211,13 @@ public class ResultActivity extends Activity {
                 }
                 final String text = OcrClient.recognize(cfg, jpeg, cfg.lang);
                 final int kb = jpeg.length / 1024;
-                getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                History.add(this, text);
+                getSharedPreferences("last", Context.MODE_PRIVATE).edit()
                         .putString("text", text)
                         .putLong("at", System.currentTimeMillis())
                         .apply();
                 runOnUiThread(() -> {
-                    lastText = text;
-                    flow.setTokens(WordSeg.split(text));
-                    selHint.setTextColor(Ui.SUB);
-                    selHint.setText("共 " + text.length() + " 字 / " + flow.size()
-                            + " 词块 · 上下滑动浏览 · 轻点复制 · 横向滑动区间选择");
-                    status.setTextColor(Ui.OK);
+                    showText(text, "完成");
                     status.setText("完成 · " + text.length() + " 字 · 上传 " + kb + " KB · "
                             + cfg.providerName());
                 });
