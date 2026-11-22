@@ -13,6 +13,9 @@ import android.widget.Toast;
 public class SettingsActivity extends Activity {
     private Cfg cfg;
     private TextView providerView;
+    private TextView btnSpace;
+    private TextView btnTc;
+    private TextView btnAcc;
     private EditText ocrKey;
     private EditText tcId;
     private EditText tcKey;
@@ -49,24 +52,24 @@ public class SettingsActivity extends Activity {
         pCard.addView(hint);
         LinearLayout pRow = new LinearLayout(this);
         pRow.setOrientation(LinearLayout.HORIZONTAL);
-        TextView useSpace = Ui.button(this, "用 OCR.space", true);
-        useSpace.setOnClickListener(v -> {
+        btnSpace = Ui.button(this, "OCR.space", false);
+        btnSpace.setOnClickListener(v -> {
             cfg.provider = Cfg.PROVIDER_OCRSPACE;
             renderProvider();
         });
-        TextView useTc = Ui.button(this, "腾讯云·通用", false);
-        useTc.setOnClickListener(v -> {
+        btnTc = Ui.button(this, "腾讯云·通用", false);
+        btnTc.setOnClickListener(v -> {
             cfg.provider = Cfg.PROVIDER_TENCENT;
             renderProvider();
         });
-        TextView useAcc = Ui.button(this, "腾讯云·高精度", false);
-        useAcc.setOnClickListener(v -> {
+        btnAcc = Ui.button(this, "腾讯云·高精度", false);
+        btnAcc.setOnClickListener(v -> {
             cfg.provider = Cfg.PROVIDER_TENCENT_ACC;
             renderProvider();
         });
-        pRow.addView(useSpace);
-        pRow.addView(useTc);
-        pRow.addView(useAcc);
+        pRow.addView(btnSpace);
+        pRow.addView(btnTc);
+        pRow.addView(btnAcc);
         pCard.addView(pRow);
         box.addView(pCard);
 
@@ -115,10 +118,22 @@ public class SettingsActivity extends Activity {
 
     private void renderProvider() {
         providerView.setText("当前：" + cfg.providerName());
-        if (cfg.provider != Cfg.PROVIDER_OCRSPACE) {
-            providerView.setTextColor(Ui.ACCENT);
-        } else {
-            providerView.setTextColor(Ui.WARN);
+        providerView.setTextColor(Ui.ACCENT);
+        // 选中哪个，哪个高亮并打勾；其余保持描边
+        boolean space = cfg.provider == Cfg.PROVIDER_OCRSPACE;
+        boolean tc = cfg.provider == Cfg.PROVIDER_TENCENT;
+        boolean acc = cfg.provider == Cfg.PROVIDER_TENCENT_ACC;
+        Ui.setButtonActive(this, btnSpace, space);
+        Ui.setButtonActive(this, btnTc, tc);
+        Ui.setButtonActive(this, btnAcc, acc);
+        if (btnSpace != null) {
+            btnSpace.setText(space ? "✓ OCR.space" : "OCR.space");
+        }
+        if (btnTc != null) {
+            btnTc.setText(tc ? "✓ 腾讯云·通用" : "腾讯云·通用");
+        }
+        if (btnAcc != null) {
+            btnAcc.setText(acc ? "✓ 腾讯云·高精度" : "腾讯云·高精度");
         }
     }
 

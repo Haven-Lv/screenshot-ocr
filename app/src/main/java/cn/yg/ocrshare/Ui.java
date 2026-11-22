@@ -85,6 +85,20 @@ final class Ui {
         return tv;
     }
 
+    /** 切换按钮的选中态：选中=实心强调色，未选中=描边。 */
+    static void setButtonActive(Context c, TextView tv, boolean active) {
+        if (tv == null) {
+            return;
+        }
+        if (active) {
+            tv.setTextColor(Color.parseColor("#041513"));
+            tv.setBackground(round(c, ACCENT, Color.TRANSPARENT, 22f));
+        } else {
+            tv.setTextColor(TEXT);
+            tv.setBackground(round(c, CARD_ALT, LINE, 22f));
+        }
+    }
+
     static TextView button(Context c, String s, boolean primary) {
         TextView tv = text(c, s, 12.5f, primary ? Color.parseColor("#041513") : TEXT, false, true);
         tv.setGravity(Gravity.CENTER);

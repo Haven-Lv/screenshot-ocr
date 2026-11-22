@@ -2,7 +2,7 @@
 
 截图 → 系统分享 → 本应用 → 云端 OCR → 结果页。中文分词后按住词块滑动即可区间取词，分词区**按原文换行**排版，不显示回车符。
 
-- 最新版：**v1.1.8**（versionCode 10，minSdk 26 / targetSdk 36）
+- 最新版：**v1.1.9**（versionCode 11，minSdk 26 / targetSdk 36）
 - 包名：`cn.yg.ocrshare`
 - 体积：约 33 KB，无第三方依赖（纯 framework + `org.json`）
 
@@ -10,7 +10,7 @@
 
 直接去 **Releases** 页下载 APK 安装即可：
 
-**[→ 下载最新版 ScreenshotOCR-1.1.8.apk](https://github.com/Haven-Lv/screenshot-ocr/releases/latest)**
+**[→ 下载最新版 ScreenshotOCR-1.1.9.apk](https://github.com/Haven-Lv/screenshot-ocr/releases/latest)**
 
 - 手机浏览器打开上面的链接，或电脑下载后传到手机；
 - 首次安装需在系统里允许「安装未知来源应用」；
@@ -70,6 +70,7 @@ app/src/main/java/cn/yg/ocrshare/
 
 ## 更新日志
 
+- **v1.1.9**：修设置页 provider 高亮——选中哪个哪个高亮并打 ✓（之前 "OCR.space" 按钮写死了实心样式，永远亮着）。
 - **v1.1.8**：新增「腾讯云·高精度」`GeneralAccurateOCR` 选项（与通用版共用 1000 次/月额度），设置页三选一。
 - **v1.1.7**：分词区按原文换行（去掉 ↵ 词块）；README 安装说明改为走 Release。
 - v1.1.6：分词选词（滑动区间）、点选复制。
