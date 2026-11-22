@@ -34,19 +34,23 @@ public class TokenTextView extends TextView {
     private static final int TOKEN_BG = Color.parseColor("#1B2230");
     private static final int MAX_BG_SPANS = 1500;
 
-    interface OnPick {
-        void onPick(String picked);
+    /** 选区变化回调（不再直接复制，交由底部「复制选中」按钮）。 */
+    interface OnSelectionChanged {
+        void onChange(String selected);
     }
 
     private final List<int[]> tokens = new ArrayList<>();
     private String raw = "";
-    private OnPick listener;
+    private OnSelectionChanged listener;
     private int slop;
     private int anchor = -1;
     private int selA = -1;
     private int selB = -1;
     private int paintedA = -2;
     private int paintedB = -2;
+    // 已"提交"的选区：滚动打断手势后要还原它，而不是把选区清空
+    private int committedA = -2;
+    private int committedB = -2;
     private float downX;
     private float downY;
     private boolean dragging;
@@ -66,8 +70,20 @@ public class TokenTextView extends TextView {
         setTextIsSelectable(false);
     }
 
-    void setPickListener(OnPick l) {
+    void setSelectionListener(OnSelectionChanged l) {
         listener = l;
+    }
+
+    /** 当前选区文本；没有选区返回空串。 */
+    String selectedText() {
+        if (selA < 0 || selB < 0) {
+            return "";
+        }
+        return pick(selA, selB);
+    }
+
+    boolean hasTokenSelection() {
+        return selA >= 0 && selB >= 0;
     }
 
     void setContent(String text) {
@@ -128,6 +144,8 @@ public class TokenTextView extends TextView {
         selB = -1;
         paintedA = -2;
         paintedB = -2;
+        committedA = -2;
+        committedB = -2;
         removeSpans();
         invalidate();
     }
@@ -249,12 +267,9 @@ public class TokenTextView extends TextView {
                 }
                 anchor = tokenAt(getOffsetForPosition(e.getX(), e.getY()));
                 if (anchor < 0) {
-                    return false; // 点在空白/padding：交给外层滚动
+                    return false; // 点在空白/padding：交给外层滚动，不动现有选区
                 }
-                selA = anchor;
-                selB = anchor;
-                paintedA = -2;
-                paintedB = -2;
+                // 按下不立刻上色：避免"想竖滑却被闪一下高亮"
                 dragging = false;
                 downX = e.getX();
                 downY = e.getY();
@@ -281,20 +296,30 @@ public class TokenTextView extends TextView {
                 if (!dragging && anchor >= 0) {
                     selA = anchor;
                     selB = anchor;
-                }
-                if (listener != null && selA >= 0) {
-                    String picked = pick(selA, selB);
-                    if (!picked.trim().isEmpty()) {
-                        listener.onPick(picked);
-                    }
+                    paintSelection(selA, selB);
                 }
                 disallowParent(false);
-                clearSelection();
+                committedA = selA;
+                committedB = selB;
+                if (listener != null && selA >= 0) {
+                    listener.onChange(pick(selA, selB));
+                }
+                // 高亮保留：用户可继续拖选/改选，再由「复制选中」按钮取走
                 return true;
             }
             case MotionEvent.ACTION_CANCEL: {
                 disallowParent(false);
-                clearSelection();
+                // 竖向滚动抢走了手势：还原上一次已提交的选区
+                selA = committedA;
+                selB = committedB;
+                paintedA = -2;
+                paintedB = -2;
+                if (selA >= 0 && selB >= 0) {
+                    paintSelection(selA, selB);
+                } else {
+                    removeSpans();
+                    invalidate();
+                }
                 return true;
             }
             default:

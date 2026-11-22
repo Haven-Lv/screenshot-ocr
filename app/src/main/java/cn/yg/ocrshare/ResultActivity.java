@@ -70,25 +70,21 @@ public class ResultActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         card.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 14), Ui.dp(this, 10));
 
-        selHint = Ui.text(this, "上下滑动浏览（原生滚动）· 轻点复制单词 · 横向拖过复制整段",
+        selHint = Ui.text(this, "上下滑动浏览 · 轻点选词 · 横向拖过选中一段 · 再点「复制选中」",
                 10.5f, Ui.SUB, true, false);
         selHint.setLineSpacing(Ui.dp(this, 3), 1f);
         card.addView(selHint);
 
         tokenView = new TokenTextView(this);
         tokenView.setPadding(Ui.dp(this, 2), Ui.dp(this, 16), Ui.dp(this, 2), Ui.dp(this, 24));
-        tokenView.setPickListener(picked -> {
-            if (picked.trim().isEmpty()) {
-                return;
+        tokenView.setSelectionListener(selected -> {
+            String preview = selected.replace("\n", " ");
+            if (preview.length() > 18) {
+                preview = preview.substring(0, 18) + "…";
             }
-            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (cm != null) {
-                cm.setPrimaryClip(ClipData.newPlainText("ocr-pick", picked));
-            }
-            String preview = picked.length() > 16 ? picked.substring(0, 16) + "…" : picked;
             selHint.setTextColor(Ui.OK);
-            selHint.setText("已复制 " + picked.length() + " 字：" + preview.replace("\n", " "));
-            toast("已复制：" + preview.replace("\n", " "));
+            selHint.setText("已选 " + selected.length() + " 字：" + preview
+                    + " · 点「复制选中」取走（可继续拖选）");
         });
         ScrollView scroll = new ScrollView(this);
         scroll.setLayoutParams(new LinearLayout.LayoutParams(
@@ -100,7 +96,20 @@ public class ResultActivity extends Activity {
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-        TextView copyAll = Ui.button(this, "复制全部", true);
+        TextView copySel = Ui.button(this, "复制选中", true);
+        copySel.setOnClickListener(v -> {
+            String picked = tokenView.selectedText();
+            if (picked.trim().isEmpty()) {
+                toast("先点/拖选一段词块");
+                return;
+            }
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null) {
+                cm.setPrimaryClip(ClipData.newPlainText("ocr-pick", picked));
+                toast("已复制选中 " + picked.length() + " 字");
+            }
+        });
+        TextView copyAll = Ui.button(this, "复制全部", false);
         copyAll.setOnClickListener(v -> {
             if (lastText.isEmpty()) {
                 toast("还没有结果");
@@ -132,6 +141,7 @@ public class ResultActivity extends Activity {
         });
         TextView st = Ui.button(this, "设置", false);
         st.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        actions.addView(copySel);
         actions.addView(copyAll);
         actions.addView(share);
         actions.addView(retry);
